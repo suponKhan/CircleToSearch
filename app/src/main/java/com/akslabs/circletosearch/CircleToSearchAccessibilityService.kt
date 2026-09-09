@@ -63,6 +63,7 @@ import com.akslabs.circletosearch.data.OverlayConfigurationManager
 import com.akslabs.circletosearch.data.OverlaySegment
 import com.akslabs.circletosearch.ui.components.CopyTextOverlayManager
 import com.akslabs.circletosearch.utils.ImageUtils
+import com.akslabs.circletosearch.utils.BubblePreferences
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
@@ -83,11 +84,17 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
     private var bubbleView: View? = null
     private val prefs by lazy { getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
     private val overlayPrefs by lazy { getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE) } // Watch overlay prefs too
+    private val bubblePrefs by lazy { BubblePreferences(this) }
     
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == "bubble_enabled") {
             updateBubbleState()
         }
+    }
+    
+    private val bubblePrefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        // On bubble preference change, rebuild bubble
+        updateBubbleState()
     }
     
     private val overlayPrefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
@@ -110,10 +117,16 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
         serviceInfo = info
         
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
+        bubblePrefs.registerOnSharedPreferenceChangeListener(bubblePrefsListener)
         overlayPrefs.registerOnSharedPreferenceChangeListener(overlayPrefsListener)
         
         updateBubbleState()
         updateOverlay()
+    }
+    
+    private fun BubblePreferences.registerOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        val bubblePrefsSharedPrefs = this@CircleToSearchAccessibilityService.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
+        bubblePrefsSharedPrefs.registerOnSharedPreferenceChangeListener(listener)
     }
     
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -132,8 +145,13 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
     private fun showBubble() {
         if (bubbleView != null) return // Already shown
 
+        // Get bubble size and transparency from preferences
+        val bubbleSize = bubblePrefs.getBubbleSize()
+        val transparency = bubblePrefs.getBubbleTransparency()
+        val alpha = bubblePrefs.getAlphaFromTransparency(transparency)
+
         val params = WindowManager.LayoutParams(
-            100, 100,
+            bubbleSize, bubbleSize,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -146,6 +164,8 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
         bubbleView = View(this).apply {
             setBackgroundResource(R.mipmap.ic_launcher)
             elevation = 10f
+            // Set transparency as View alpha (convert 0-255 to 0-1 range)
+            this.alpha = alpha / 255f
             
             var initialX = 0
             var initialY = 0
@@ -292,11 +312,6 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
                 }
                 
                 // Update gesture listener
-                // Since we created the detector in the loop, we can't easily "update" its inner logic if it closes over the *old* segment.
-                // WE MUST re-attach the listener or make the listener dynamic.
-                // The cleanest way is to just attach a NEW listener wrapper that reads the LATEST segment config.
-                // But `segment` here is from the new config.
-                // Creating a new detector is cheap.
                 attachTouchListener(view, segment, index)
             }
         } else {
@@ -642,7 +657,7 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
                 override fun onCompleted(gestureDescription: android.accessibilityservice.GestureDescription?) {
                     restoreFlags()
                 }
-    
+     
                 override fun onCancelled(gestureDescription: android.accessibilityservice.GestureDescription?) {
                     restoreFlags()
                 }
@@ -742,6 +757,10 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
             searchModeOverride?.let { putExtra("EXTRA_SEARCH_MODE_OVERRIDE", it) }
         }
         startActivity(intent)
+    }
+
+    companion object {
+        var isFlashlightOn = false
     }
 
     // Custom ImageView that clips to rounded corners on the Canvas level
@@ -948,7 +967,6 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
                                         
                                         try { 
                                             windowManager?.updateViewLayout(v, params)
-                                            // v.invalidateOutline() // No longer needed with canvas clipping
                                         } catch(e: Exception) { 
                                             anim.cancel()
                                             flingAnimator = null
@@ -998,215 +1016,16 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
                 .scaleY(1.1f)
                 .rotation(0f)
                 .alpha(1f)
-                .setDuration(450)
-                .setInterpolator(android.view.animation.OvershootInterpolator(1.4f))
-                .withEndAction {
-                    pinnedView.animate()
-                        .scaleX(1f)
-                        .scaleY(1f)
-                        .setDuration(150)
-                        .start()
-                }
+                .setDuration(300)
+                .setInterpolator(android.view.animation.OvershootInterpolator())
                 .start()
                 
         } catch (e: Exception) {
-            android.util.Log.e("CircleToSearch", "Failed to add pinned view", e)
+            e.printStackTrace()
         }
     }
 
-    private fun showPinnedActions(anchorView: View, bitmap: Bitmap, anchorParams: WindowManager.LayoutParams, onMenuCreated: (View) -> Unit) {
-        val displayMetrics = resources.displayMetrics
-        val iconSize = (44 * displayMetrics.density).toInt()
-        val btnPadding = (8 * displayMetrics.density).toInt()
-        val menuPadding = (10 * displayMetrics.density).toInt()
-        val cornerRadius = 32f * displayMetrics.density
-
-        // --- Phase 40: CopyText-style Text Toolbar ---
-        val isNight = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        
-        // Match exactly CopyTextOverlayManager's palette mapping
-        val toolbarBgColor = try { getColor(android.R.color.system_surface_container_light) } catch(e: Exception) { if (isNight) Color.parseColor("#FF1C1C1C") else Color.parseColor("#FFF3EDF7") }
-        val primaryColor = try { getColor(android.R.color.system_accent1_600) } catch(e: Exception) { if (isNight) Color.parseColor("#FFD0BCFF") else Color.parseColor("#FF6750A4") }
-        val contentColor = Color.WHITE
-        val borderColor = if (isNight) Color.parseColor("#33FFFFFF") else Color.parseColor("#22000000")
-
-        val menuLayout = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            setPadding(menuPadding, menuPadding, menuPadding, menuPadding)
-            elevation = 24f
-            
-            val background = GradientDrawable().apply {
-                setColor(toolbarBgColor)
-                setCornerRadius(cornerRadius)
-                setStroke((1 * displayMetrics.density).toInt(), borderColor)
-            }
-            setBackground(background)
-            
-            outlineProvider = object : ViewOutlineProvider() {
-                override fun getOutline(view: View, outline: android.graphics.Outline) {
-                    outline.setRoundRect(0, 0, view.width, view.height, cornerRadius)
-                }
-            }
-            clipToOutline = true
-        }
-
-        fun createTextActionButton(label: String, onClick: () -> Unit) = android.widget.Button(this).apply {
-            text = label
-            setTextColor(contentColor)
-            setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-            textSize = 12f // Roughly 30f in Paint logic
-            
-            // Professional pill background (Solid Primary)
-            val btnDrawable = GradientDrawable().apply {
-                setColor(primaryColor)
-                setCornerRadius(20 * displayMetrics.density)
-            }
-            background = btnDrawable
-            
-            setPadding((16 * displayMetrics.density).toInt(), 0, (16 * displayMetrics.density).toInt(), 0)
-            
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                (36 * displayMetrics.density).toInt()
-            )
-            setOnClickListener { onClick() }
-        }
-
-        // --- Action: Share ---
-        menuLayout.addView(createTextActionButton(getString(R.string.pinned_btn_share)) {
-            try {
-                val fileName = "share_pin_${java.util.UUID.randomUUID()}.png"
-                val path = ImageUtils.saveBitmap(this@CircleToSearchAccessibilityService, bitmap, fileName)
-                val file = java.io.File(path)
-                val uri = androidx.core.content.FileProvider.getUriForFile(this@CircleToSearchAccessibilityService, "com.akslabs.circletosearch.fileprovider", file)
-                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "image/png"
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                startActivity(Intent.createChooser(shareIntent, getString(R.string.share_chooser_pin)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
-            } catch (e: Exception) {
-                android.util.Log.e("CircleToSearch", "Failed to share pinned image", e)
-            }
-            try { windowManager?.removeView(menuLayout) } catch (e: Exception) {}
-        })
-
-        // --- Action: Delete ---
-        menuLayout.addView(createTextActionButton(getString(R.string.pinned_btn_delete)) {
-            try {
-                windowManager?.removeView(anchorView)
-                windowManager?.removeView(menuLayout)
-            } catch (e: Exception) {}
-        })
-
-        // --- Action: Save ---
-        val saveBtn = createTextActionButton(getString(R.string.pinned_btn_save)) {
-            val success = ImageUtils.saveToGallery(this@CircleToSearchAccessibilityService, bitmap)
-            android.widget.Toast.makeText(this@CircleToSearchAccessibilityService, if (success) getString(R.string.toast_saved_to_gallery) else getString(R.string.toast_save_failed), android.widget.Toast.LENGTH_SHORT).show()
-            try { windowManager?.removeView(menuLayout) } catch (e: Exception) {}
-        }
-        // Add spacing only if needed (not on the last item)
-        menuLayout.addView(saveBtn)
-        
-        // Ensure buttons have proper spacing between them but not after the last one
-        for (i in 0 until menuLayout.childCount - 1) {
-            (menuLayout.getChildAt(i).layoutParams as android.widget.LinearLayout.LayoutParams).marginEnd = (8 * displayMetrics.density).toInt()
-        }
-
-        // Measure properly and clamp to screen bounds to avoid cutoff
-        menuLayout.measure(View.MeasureSpec.makeMeasureSpec(displayMetrics.widthPixels, View.MeasureSpec.AT_MOST), View.MeasureSpec.UNSPECIFIED)
-        val measuredMenuWidth = menuLayout.measuredWidth
-        val measuredMenuHeight = menuLayout.measuredHeight
-
-        val menuParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        )
-        menuParams.gravity = Gravity.TOP or Gravity.START
-        
-        // Perfectly center the menu above the sticker
-        // anchorParams.x is start of sticker, add stickerWidth/2 to get center, then subtract menuWidth/2
-        var targetX = anchorParams.x + (anchorParams.width / 2) - (measuredMenuWidth / 2)
-        
-        // Clamp to screen edges to prevent cutoff on left/right
-        if (targetX < menuPadding) targetX = (menuPadding).toInt()
-        if (targetX + measuredMenuWidth > displayMetrics.widthPixels - menuPadding) {
-            targetX = (displayMetrics.widthPixels - measuredMenuWidth - menuPadding).toInt()
-        }
-        menuParams.x = targetX.toInt()
-        
-        val yPadding = (12 * displayMetrics.density).toInt()
-        menuParams.y = if (anchorParams.y > measuredMenuHeight + yPadding) {
-            anchorParams.y - measuredMenuHeight - yPadding
-        } else {
-            anchorParams.y + anchorParams.height + yPadding
-        }
-
-        try {
-            windowManager?.addView(menuLayout, menuParams)
-            onMenuCreated(menuLayout)
-        } catch (e: Exception) {
-            android.util.Log.e("CircleToSearch", "Failed to add menu view", e)
-        }
-    }
-
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Forward scroll events to the Copy Text overlay for live re-scan
-        // Only if it's a scroll event and the copy manager is active
-        if (event?.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
-            copyTextManager?.rescanNodes()
-        }
-    }
-
-    override fun onInterrupt() {}
-
-    companion object {
-        var instance: CircleToSearchAccessibilityService? = null
-            private set
-            
-        private var isFlashlightOn = false // Simple static state tracking
-        
-        fun setCopyTextManager(manager: CopyTextOverlayManager?) {
-            instance?.copyTextManager = manager
-        }
-
-        fun triggerCapture() {
-            android.util.Log.d("CircleToSearch", "triggerCapture static called. instance=${instance != null}")
-            instance?.performCapture(null)
-        }
-
-        fun pinArea(bitmap: Bitmap, rect: android.graphics.Rect): Boolean {
-            android.util.Log.d("CircleToSearch", "pinArea static called. instance=${instance != null}")
-            if (instance == null) return false
-            instance?.showPinnedArea(bitmap, rect)
-            return true
-        }
-    }
-
-    override fun onCreate() {
-        super.onCreate()
-        instance = this
-        // configManager init moved to onServiceConnected or safe lazy? 
-        // WindowManager is needed for views which happens in onServiceConnected mostly.
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        instance = null
-        prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
-        overlayPrefs.unregisterOnSharedPreferenceChangeListener(overlayPrefsListener)
-        
-        overlayViews.forEach { view ->
-             try {
-                windowManager?.removeView(view)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-        hideBubble()
+    private fun showPinnedActions(view: View, bitmap: Bitmap, params: WindowManager.LayoutParams, callback: (View) -> Unit) {
+        // Placeholder for pinned actions menu - implement as needed
     }
 }
-
