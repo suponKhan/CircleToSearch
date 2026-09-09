@@ -76,9 +76,11 @@ class MainActivity : ComponentActivity() {
                         when (screen) {
                             "settings" -> com.akslabs.circletosearch.ui.OverlaySettingsScreen(onBack = { currentScreen = "home" })
                             "ocr_settings" -> com.akslabs.circletosearch.ui.OcrSettingsScreen(onBack = { currentScreen = "home" })
+                            "bubble_settings" -> com.akslabs.circletosearch.ui.BubbleSettingsScreen(onBack = { currentScreen = "home" })
                             else -> SetupScreen(
                                 onSettingsClick = { currentScreen = "settings" },
-                                onOcrSettingsClick = { currentScreen = "ocr_settings" }
+                                onOcrSettingsClick = { currentScreen = "ocr_settings" },
+                                onBubbleSettingsClick = { currentScreen = "bubble_settings" }
                             )
                         }
                     }
@@ -90,7 +92,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
+fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit, onBubbleSettingsClick: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val prefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
@@ -349,7 +351,7 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
                 color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.align(Alignment.Start)
             )
-            BubbleSwitch(context)
+            BubbleSwitch(context, onBubbleSettingsClick)
             
             val uiPreferences = remember { com.akslabs.circletosearch.utils.UIPreferences(context) }
 
@@ -392,15 +394,6 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
                 modifier = Modifier.clickable(onClick = onOcrSettingsClick),
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent)
             )
-//            Spacer(modifier = Modifier.height(25.dp))
-//
-//            // Privacy Note
-//            Text(
-//                text = "That’s it. No more permissions.\n We’re not trying to adopt your phone.",
-//                style = MaterialTheme.typography.bodySmall,
-//                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-//                textAlign = TextAlign.Center
-//            )
 
             Spacer(modifier = Modifier.height(22.dp))
 
@@ -634,7 +627,7 @@ fun SupportDialog(
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
-                    // ── Scrollable body ────────────────────────────────────────
+                    // ── Scrollable body ────────────────────────���───────────────
                     var isExpanded by remember { mutableStateOf(false) }
                     Column(
                         modifier = Modifier
@@ -764,25 +757,43 @@ fun SupportDialog(
 }
 
 @Composable
-fun BubbleSwitch(context: android.content.Context) {
+fun BubbleSwitch(context: android.content.Context, onBubbleSettingsClick: () -> Unit) {
     val prefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
     val isBubbleEnabled = remember { mutableStateOf(prefs.getBoolean("bubble_enabled", false)) }
 
-    ListItem(
-        headlineContent = { Text(stringResource(R.string.label_floating_bubble)) },
-        supportingContent = { Text(stringResource(R.string.label_floating_bubble_subtitle)) },
-        trailingContent = {
-            Switch(
-                checked = isBubbleEnabled.value,
-                onCheckedChange = { enabled ->
-                    isBubbleEnabled.value = enabled
-                    prefs.edit().putBoolean("bubble_enabled", enabled).apply()
-                }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        ),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.label_floating_bubble)) },
+                supportingContent = { Text(stringResource(R.string.label_floating_bubble_subtitle)) },
+                trailingContent = {
+                    Switch(
+                        checked = isBubbleEnabled.value,
+                        onCheckedChange = { enabled ->
+                            isBubbleEnabled.value = enabled
+                            prefs.edit().putBoolean("bubble_enabled", enabled).apply()
+                        }
+                    )
+                },
+                colors = ListItemDefaults.colors(
+                    containerColor = Color.Transparent
+                )
             )
-        },
-        colors = ListItemDefaults.colors(
-            containerColor = Color.Transparent
-        )
-    )
+            Divider(modifier = Modifier.padding(horizontal = 16.dp))
+            ListItem(
+                headlineContent = { Text("Customize Bubble") },
+                supportingContent = { Text("Adjust size and transparency") },
+                trailingContent = { Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                modifier = Modifier.clickable(onClick = onBubbleSettingsClick),
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+            )
+        }
+    }
 }
 
