@@ -62,6 +62,7 @@ import com.akslabs.circletosearch.data.GestureType
 import com.akslabs.circletosearch.data.OverlayConfigurationManager
 import com.akslabs.circletosearch.data.OverlaySegment
 import com.akslabs.circletosearch.ui.components.CopyTextOverlayManager
+import com.akslabs.circletosearch.utils.BubblePreferences
 import com.akslabs.circletosearch.utils.ImageUtils
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
