@@ -4,15 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       bubble_size:
-      description: 'Bubble size in px (30-200, default: 40)'
-      required: false
-      default: '40'
-      type: string
+        description: 'Bubble size in px (20-200, default: 40)'
+        required: false
+        default: '40'
+        type: string
       bubble_opacity:
-      description: 'Bubble opacity 0-100 (0=fully opaque, default: 0)'
-      required: false
-      default: '0'
-      type: string
+        description: 'Bubble opacity 0-100 (0=fully opaque, default: 0)'
+        required: false
+        default: '0'
+        type: string
 
 env:
   BUBBLE_SIZE_DEFAULT: ${{ inputs.bubble_size || '40' }}
@@ -40,63 +40,53 @@ jobs:
 
       - name: Patch BubblePreferences.kt defaults
         run: |
-          # Apply dispatch-input overrides to BubblePreferences constants
+          BUBBLE_FILE="app/src/main/java/com/akslabs/circletosearch/utils/BubblePreferences.kt"
           sed -i \
-            "s/const val DEFAULT_BUBBLE_SIZE = [0-9]*/const val DEFAULT_BUBBLE_SIZE = ${{ env.BUBBLE_SIZE_DEFAULT }} \/\/ pixels (workflow override)/" \
-            app/src/main/java/com/akslabs/circletosearch/utils/BubblePreferences.kt
+            -e "s/const val DEFAULT_BUBBLE_SIZE = [0-9]*/const val DEFAULT_BUBBLE_SIZE = ${{ env.BUBBLE_SIZE_DEFAULT }}/" \
+            -e "s/const val DEFAULT_TRANSPARENCY = [0-9]*/const val DEFAULT_TRANSPARENCY = ${{ env.BUBBLE_OPACITY_DEFAULT }}/" \
+            "$BUBBLE_FILE"
 
-          sed -i \
-            "s/const val DEFAULT_TRANSPARENCY = [0-9]*/const val DEFAULT_TRANSPARENCY = ${{ env.BUBBLE_OPACITY_DEFAULT }} \/\/ 0-100 (workflow override)/" \
-            app/src/main/java/com/akslabs/circletosearch/utils/BubblePreferences.kt
-
-          echo "=== BubblePreferences.kt constants after patch ==="
-          grep -E "DEFAULT_BUBBLE_SIZE|DEFAULT_TRANSPARENCY|MIN_BUBBLE_SIZE|MAX_BUBBLE_SIZE" \
-            app/src/main/java/com/akslabs/circletosearch/utils/BubblePreferences.kt
+          echo "=== Bubble constants after patch ==="
+          grep -E "DEFAULT_BUBBLE_SIZE|DEFAULT_TRANSPARENCY|MIN_BUBBLE_SIZE|MAX_BUBBLE_SIZE" "$BUBBLE_FILE"
 
       - name: Build debug APK
         run: ./gradlew assembleDebug
-        env:
-          # Suppress R8 so non-obfuscated for personal use
-          ANDROID_PROGUARD_ENABLED: false
 
       - name: Build release APK (unsigned)
         run: ./gradlew assembleRelease
 
-      - name: Upload Debug APK
+      - name: Upload Debug APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: debug-apk-bubble-${{ env.BUBBLE_SIZE_DEFAULT }}px
+          name: debug-apk-bubble-${{ env.BUBBLE_SIZE_DEFAULT }}px-op${{ env.BUBBLE_OPACITY_DEFAULT }}
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
 
-      - name: Upload Release APK
+      - name: Upload Release APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk-bubble-${{ env.BUBBLE_SIZE_DEFAULT }}px
+          name: release-apk-unsigned-bubble-${{ env.BUBBLE_SIZE_DEFAULT }}px-op${{ env.BUBBLE_OPACITY_DEFAULT }}
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           retention-days: 7
 
-      - name: Download debug APK for release upload
-        uses: actions/download-artifact@v4
-        with:
-          name: debug-apk-bubble-${{ env.BUBBLE_SIZE_DEFAULT }}px
-          path: downloaded/
-
       - name: Create GitHub Release
-        if: github.event.inputs.create_release == 'true' || true
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: personal-${{ env.BUBBLE_SIZE_DEFAULT }}px-op${{ env.BUBBLE_OPACITY_DEFAULT }}-${{ github.run_number }}
           body: |
             ## CircleToSearch Personal Build
 
-            **Bubble size:** ${{ env.BUBBLE_SIZE_DEFAULT }}px  
-            **Bubble opacity:** ${{ env.BUBBLE_OPACITY_DEFAULT }}%  
-            **Built from:** ${{ github.sha }}  
-            **Branch:** ${{ github.ref_name }}
+            | Setting | Value |
+            |---|---|
+            | Bubble size | ${{ env.BUBBLE_SIZE_DEFAULT }} px |
+            | Bubble opacity | ${{ env.BUBBLE_OPACITY_DEFAULT }}% (0 = fully opaque) |
+            | Commit | ${{ github.sha }} |
 
-            Download the APK below and install on your device.
+            - **Debug APK**: installable directly (self-signed debug key)
+            - **Release APK**: unsigned (re-sign with `apksigner` before installing)
           files: |
-            downloaded/app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/app-release-unsigned.apk
           draft: false
           prerelease: true
         env:
