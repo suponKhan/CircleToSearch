@@ -76,7 +76,7 @@ fun BubbleSettingsScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 24.dp, vertical = 16.dp)
-                .verticalScroll(rememberScrollState()),
+                .then(Modifier.verticalScroll(rememberScrollState())),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             // Bubble Size Section
