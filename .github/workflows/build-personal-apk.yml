@@ -1,0 +1,103 @@
+name: Build Personal APK (suponKhan)
+
+on:
+  workflow_dispatch:
+    inputs:
+      bubble_size:
+        description: 'Bubble size in px (30-200, default: 65)'
+        required: false
+        default: '65'
+        type: string
+      bubble_opacity:
+        description: 'Bubble opacity 0-100 (100=fully opaque, default: 100)'
+        required: false
+        default: '100'
+        type: string
+
+env:
+  BUBBLE_SIZE_DEFAULT: ${{ inputs.bubble_size || '65' }}
+  BUBBLE_OPACITY_DEFAULT: ${{ inputs.bubble_opacity || '100' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Patch BubblePreferences.kt defaults
+        run: |
+          # Apply dispatch-input overrides to BubblePreferences constants
+          sed -i \
+            "s/const val DEFAULT_BUBBLE_SIZE = [0-9]*/const val DEFAULT_BUBBLE_SIZE = ${{ env.BUBBLE_SIZE_DEFAULT }} \/\/ pixels (workflow override)/" \
+            app/src/main/java/com/akslabs/circletosearch/utils/BubblePreferences.kt
+
+          sed -i \
+            "s/const val DEFAULT_TRANSPARENCY = [0-9]*/const val DEFAULT_TRANSPARENCY = ${{ env.BUBBLE_OPACITY_DEFAULT }} \/\/ 0-100 (workflow override)/" \
+            app/src/main/java/com/akslabs/circletosearch/utils/BubblePreferences.kt
+
+          echo "=== BubblePreferences.kt constants after patch ==="
+          grep -E "DEFAULT_BUBBLE_SIZE|DEFAULT_TRANSPARENCY|MIN_BUBBLE_SIZE|MAX_BUBBLE_SIZE" \
+            app/src/main/java/com/akslabs/circletosearch/utils/BubblePreferences.kt
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+        env:
+          # Suppress R8 so non-obfuscated for personal use
+          ANDROID_PROGUARD_ENABLED: false
+
+      - name: Build release APK (unsigned)
+        run: ./gradlew assembleRelease
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk-bubble-${{ env.BUBBLE_SIZE_DEFAULT }}px
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk-bubble-${{ env.BUBBLE_SIZE_DEFAULT }}px
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 7
+
+      - name: Download debug APK for release upload
+        uses: actions/download-artifact@v4
+        with:
+          name: debug-apk-bubble-${{ env.BUBBLE_SIZE_DEFAULT }}px
+          path: downloaded/
+
+      - name: Create GitHub Release
+        if: github.event.inputs.create_release == 'true' || true
+        uses: softprops/action-gh-release@v2
+        with:
+          body: |
+            ## CircleToSearch Personal Build
+
+            **Bubble size:** ${{ env.BUBBLE_SIZE_DEFAULT }}px  
+            **Bubble opacity:** ${{ env.BUBBLE_OPACITY_DEFAULT }}%  
+            **Built from:** ${{ github.sha }}  
+            **Branch:** ${{ github.ref_name }}
+
+            Download the APK below and install on your device.
+          files: |
+            downloaded/app/build/outputs/apk/debug/app-debug.apk
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
