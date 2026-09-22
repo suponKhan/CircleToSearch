@@ -83,6 +83,7 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
     private var bubbleView: View? = null
     private val prefs by lazy { getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
     private val overlayPrefs by lazy { getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE) } // Watch overlay prefs too
+    private val bubblePrefs by lazy { BubblePreferences(this) }
     
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == "bubble_enabled") {
@@ -118,7 +119,8 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
         
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         overlayPrefs.registerOnSharedPreferenceChangeListener(overlayPrefsListener)
-        bubblePrefs.registerOnSharedPreferenceChangeListener(bubblePrefsListener)
+        getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
+            .registerOnSharedPreferenceChangeListener(bubblePrefsListener)
         
         updateBubbleState()
         updateOverlay()
@@ -1217,7 +1219,8 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
         instance = null
         prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
         overlayPrefs.unregisterOnSharedPreferenceChangeListener(overlayPrefsListener)
-        bubblePrefs.unregisterOnSharedPreferenceChangeListener(bubblePrefsListener)
+        getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
+            .unregisterOnSharedPreferenceChangeListener(bubblePrefsListener)
         
         overlayViews.forEach { view ->
              try {
