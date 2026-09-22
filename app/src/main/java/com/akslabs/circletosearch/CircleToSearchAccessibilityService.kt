@@ -94,6 +94,13 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
         // On any overlay config change, rebuild the overlay
         updateOverlay()
     }
+    
+    private val bubblePrefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        // Live-update bubble size and opacity when slider changes
+        if (key == "bubble_size" || key == "bubble_transparency") {
+            rebuildBubble()
+        }
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -111,6 +118,7 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
         
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         overlayPrefs.registerOnSharedPreferenceChangeListener(overlayPrefsListener)
+        bubblePrefs.registerOnSharedPreferenceChangeListener(bubblePrefsListener)
         
         updateBubbleState()
         updateOverlay()
@@ -149,9 +157,10 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
         params.y = 200
 
         bubbleView = View(this).apply {
+            setBackgroundResource(R.mipmap.ic_launcher)
+            elevation = 10f
             // Apply bubble opacity from BubblePreferences
             this.alpha = alpha / 255f
-            // Keep the existing touch listener
             var initialX = 0
             var initialY = 0
             var initialTouchX = 0f
@@ -200,6 +209,12 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
             }
             bubbleView = null
         }
+    }
+    
+    private fun rebuildBubble() {
+        hideBubble()
+        showBubble()
+    }
     }
 
     private fun updateOverlay() {
@@ -1203,6 +1218,7 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
         instance = null
         prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
         overlayPrefs.unregisterOnSharedPreferenceChangeListener(overlayPrefsListener)
+        bubblePrefs.unregisterOnSharedPreferenceChangeListener(bubblePrefsListener)
         
         overlayViews.forEach { view ->
              try {
