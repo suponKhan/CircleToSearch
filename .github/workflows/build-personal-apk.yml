@@ -59,14 +59,18 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk-bubble-${{ env.BUBBLE_SIZE_DEFAULT }}px-op${{ env.BUBBLE_OPACITY_DEFAULT }}
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            app/build/outputs/apk/debug/*-debug.apk
+            app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
 
       - name: Upload Release APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-apk-unsigned-bubble-${{ env.BUBBLE_SIZE_DEFAULT }}px-op${{ env.BUBBLE_OPACITY_DEFAULT }}
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          path: |
+            app/build/outputs/apk/release/*-release-unsigned.apk
+            app/build/outputs/apk/release/app-release-unsigned.apk
           retention-days: 7
 
       - name: Create GitHub Release
@@ -85,8 +89,9 @@ jobs:
             - **Debug APK**: installable directly (self-signed debug key)
             - **Release APK**: unsigned (re-sign with `apksigner` before installing)
           files: |
+            app/build/outputs/apk/debug/*-debug.apk
             app/build/outputs/apk/debug/app-debug.apk
-            app/build/outputs/apk/release/app-release-unsigned.apk
+            app/build/outputs/apk/release/*-release-unsigned.apk
           draft: false
           prerelease: true
         env:
