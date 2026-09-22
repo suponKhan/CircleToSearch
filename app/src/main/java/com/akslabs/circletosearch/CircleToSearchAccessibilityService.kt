@@ -132,8 +132,13 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
     private fun showBubble() {
         if (bubbleView != null) return // Already shown
 
+        // Read bubble size and opacity from BubblePreferences
+        val bubbleSize = bubblePrefs.getBubbleSize()
+        val transparency = bubblePrefs.getBubbleTransparency()
+        val alpha = bubblePrefs.getAlphaFromTransparency(transparency)
+
         val params = WindowManager.LayoutParams(
-            100, 100,
+            bubbleSize, bubbleSize,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -144,9 +149,9 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
         params.y = 200
 
         bubbleView = View(this).apply {
-            setBackgroundResource(R.mipmap.ic_launcher)
-            elevation = 10f
-            
+            // Apply bubble opacity from BubblePreferences
+            this.alpha = alpha / 255f
+            // Keep the existing touch listener
             var initialX = 0
             var initialY = 0
             var initialTouchX = 0f
