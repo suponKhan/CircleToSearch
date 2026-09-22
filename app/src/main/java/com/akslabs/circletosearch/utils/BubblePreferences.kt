@@ -29,10 +29,10 @@ class BubblePreferences(private val context: Context) {
         private const val BUBBLE_SIZE_KEY = "bubble_size"
         private const val BUBBLE_TRANSPARENCY_KEY = "bubble_transparency"
         
-        // Default values
-        const val DEFAULT_BUBBLE_SIZE = 100 // pixels
+        // Default values — tuned for Galaxy S10 (smaller, more visible)
+        const val DEFAULT_BUBBLE_SIZE = 65 // pixels (was 100)
         const val DEFAULT_TRANSPARENCY = 100 // 0-100, where 100 is fully opaque
-        const val MIN_BUBBLE_SIZE = 50
+        const val MIN_BUBBLE_SIZE = 30
         const val MAX_BUBBLE_SIZE = 200
     }
 
