@@ -215,7 +215,6 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
         hideBubble()
         showBubble()
     }
-    }
 
     private fun updateOverlay() {
         val config = configManager.getConfig()
