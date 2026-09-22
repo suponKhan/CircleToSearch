@@ -4,19 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       bubble_size:
-        description: 'Bubble size in px (30-200, default: 65)'
-        required: false
-        default: '65'
-        type: string
+      description: 'Bubble size in px (30-200, default: 40)'
+      required: false
+      default: '40'
+      type: string
       bubble_opacity:
-        description: 'Bubble opacity 0-100 (100=fully opaque, default: 100)'
-        required: false
-        default: '100'
-        type: string
+      description: 'Bubble opacity 0-100 (0=fully opaque, default: 0)'
+      required: false
+      default: '0'
+      type: string
 
 env:
-  BUBBLE_SIZE_DEFAULT: ${{ inputs.bubble_size || '65' }}
-  BUBBLE_OPACITY_DEFAULT: ${{ inputs.bubble_opacity || '100' }}
+  BUBBLE_SIZE_DEFAULT: ${{ inputs.bubble_size || '40' }}
+  BUBBLE_OPACITY_DEFAULT: ${{ inputs.bubble_opacity || '0' }}
 
 jobs:
   build:
